@@ -4,7 +4,7 @@ const axios = require('axios');
 
 // Grampsweb admin credentials from .env
 const GRAMPS_USER = process.env.GRAMPS_ADMIN_USER || 'dschmidt';
-const GRAMPS_PASS = process.env.GRAMPS_ADMIN_PASS || 'password'; // Set actual password in .env
+const GRAMPS_PASS = process.env.GRAMPS_ADMIN_PASS || 'test-password-not-for-production'; // Set actual password in .env
 
 // Helper to get auth headers for Basic Auth
 function grampsAuthHeaders() {
