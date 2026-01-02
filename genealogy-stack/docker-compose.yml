@@ -23,12 +23,11 @@ services:
     build: ./rootsmagic
     platform: linux/amd64
     container_name: rootsmagic-wine
-    privileged: true
     ports:
       - "5900:5900" # VNC Port
       - "8080:8080" # noVNC Web Interface
     environment:
-      - VNC_PASSWORD=newpassword123
+      - VNC_PASSWORD=${VNC_PASSWORD}
       - WINEARCH=win64
       - WINEPREFIX=/root/.wine
     volumes:
@@ -68,6 +67,6 @@ services:
     volumes:
       - ./scripts:/app
       - ./data/rm_data:/data/rm_data # Read-only access to RM DB
-    command: python sync_worker.py
+    command: sh -c "pip install requests && python sync_worker.py"
     depends_on:
       - grampsweb
