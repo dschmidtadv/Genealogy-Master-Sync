@@ -27,7 +27,7 @@ services:
       - "5900:5900" # VNC Port
       - "8080:8080" # noVNC Web Interface
     environment:
-      - VNC_PASSWORD=Qw7$gT9!zLp2@xVb6Rk1#sDf8Jm4^uYc
+      - VNC_PASSWORD=${VNC_PASSWORD}
       - WINEARCH=win64
       - WINEPREFIX=/root/.wine
     volumes:
