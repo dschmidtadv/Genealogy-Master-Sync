@@ -28,9 +28,9 @@ RUN ln -s /usr/share/novnc/vnc.html /usr/share/novnc/index.html
 # Create supervisor config for VNC services
 # Create non-root user for running VNC services
 RUN useradd -m -s /bin/bash vncuser && \
-    mkdir -p /var/log/supervisor /var/run /etc/supervisor/conf.d && \
-    chown -R vncuser:vncuser /var/log/supervisor /var/run /usr/share/novnc && \
-    chmod 755 /var/log/supervisor /var/run
+    mkdir -p /var/log/supervisor /var/log/vnc /var/run /var/run/vnc /etc/supervisor/conf.d && \
+    chown -R vncuser:vncuser /var/log/vnc /var/run/vnc /usr/share/novnc && \
+    chmod 755 /var/log/supervisor /var/log/vnc /var/run /var/run/vnc
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # 3. The Edge/WebView2 Workaround (Report Section 4.3)
