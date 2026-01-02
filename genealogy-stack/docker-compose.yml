@@ -67,6 +67,6 @@ services:
     volumes:
       - ./scripts:/app
       - ./data/rm_data:/data/rm_data # Read-only access to RM DB
-    command: python sync_worker.py
+    command: sh -c "pip install requests && python sync_worker.py"
     depends_on:
       - grampsweb
