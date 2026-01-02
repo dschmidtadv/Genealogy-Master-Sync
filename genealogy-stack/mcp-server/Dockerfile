@@ -17,8 +17,5 @@ RUN npm run build
 # Ensure config directory exists
 RUN mkdir -p /root/.familysearch-mcp
 
-# Entrypoint via node
-ENTRYPOINT ["node", "dist/index.js"]
-
 # Use CMD for ESM compatibility (avoids ENTRYPOINT array form issues with ESM)
 CMD ["node", "dist/index.js"]
