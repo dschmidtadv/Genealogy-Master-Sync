@@ -48,6 +48,6 @@ CMD Xvfb :99 -screen 0 1024x768x24 & \
     DISPLAY=:99 fluxbox & \
     sleep 1 && \
     x11vnc -display :99 -passwd $VNC_PASSWORD -listen localhost -xkb -ncache 10 -ncache_cr & \
-        sleep 2 && \
-        websockify --web=/usr/share/novnc 8080 localhost:5900 & \
-        tail -f /dev/null
+    sleep 2 && \
+    websockify --web=/usr/share/novnc 8080 localhost:5900 & \
+    tail -f /dev/null
