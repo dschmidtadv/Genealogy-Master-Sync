@@ -23,12 +23,11 @@ services:
     build: ./rootsmagic
     platform: linux/amd64
     container_name: rootsmagic-wine
-    privileged: true
     ports:
       - "5900:5900" # VNC Port
       - "8080:8080" # noVNC Web Interface
     environment:
-      - VNC_PASSWORD=newpassword123
+      - VNC_PASSWORD=Qw7$gT9!zLp2@xVb6Rk1#sDf8Jm4^uYc
       - WINEARCH=win64
       - WINEPREFIX=/root/.wine
     volumes:

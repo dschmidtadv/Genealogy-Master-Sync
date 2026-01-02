@@ -26,7 +26,10 @@ RUN apt-get update && apt-get install -y \
 RUN ln -s /usr/share/novnc/vnc.html /usr/share/novnc/index.html
 
 # Create supervisor config for VNC services
-RUN mkdir -p /var/log/supervisor /var/run /etc/supervisor/conf.d && \
+# Create non-root user for running VNC services
+RUN useradd -m -s /bin/bash vncuser && \
+    mkdir -p /var/log/supervisor /var/run /etc/supervisor/conf.d && \
+    chown -R vncuser:vncuser /var/log/supervisor /var/run /usr/share/novnc && \
     chmod 755 /var/log/supervisor /var/run
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
@@ -44,7 +47,7 @@ CMD Xvfb :99 -screen 0 1024x768x24 & \
     sleep 2 && \
     DISPLAY=:99 fluxbox & \
     sleep 1 && \
-    x11vnc -display :99 -passwd $VNC_PASSWORD -listen 0.0.0.0 -xkb -ncache 10 -ncache_cr & \
-    sleep 2 && \
-    websockify --web=/usr/share/novnc 8080 0.0.0.0:5900 & \
-    tail -f /dev/null
+    x11vnc -display :99 -passwd $VNC_PASSWORD -listen localhost -xkb -ncache 10 -ncache_cr & \
+        sleep 2 && \
+        websockify --web=/usr/share/novnc 8080 localhost:5900 & \
+        tail -f /dev/null
