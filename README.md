@@ -53,11 +53,36 @@ Add this to your claude\_desktop\_config.json:
   }  
 }
 
-## **🛠 Technical Details**
+## **🔐 Security & Configuration**
 
-* **WebView2/Edge Workaround:** The RootsMagic image installs the Enterprise MSI of Edge to bypass Wine installation crashes.  
-* **SQLite Collation:** The Python worker implements RMNOCASE to natively read RootsMagic .rmtree files.  
+### **Environment Variables**
+
+Sensitive configuration is managed via `.env` file:
+
+```bash
+# Copy the template
+cp .env.example .env
+
+# Edit with your secure passwords
+VNC_PASSWORD=your_secure_vnc_password
+GRAMPS_ADMIN_USER=your_admin_username
+```
+
+**Never commit `.env` to version control!** Add it to `.gitignore`.
+
+### **Default Credentials (Change Immediately!)**
+
+| Service | Username | Password | File |
+|---------|----------|----------|------|
+| RootsMagic VNC | - | `newpassword123` | `.env` (VNC_PASSWORD) |
+| Gramps Web | `dschmidt` | `admin123` | Database |
+
+## **� Technical Details**
+
+* **WebView2/Edge Workaround:** The RootsMagic image installs the Enterprise MSI of Edge to bypass Wine installation crashes.
+* **SQLite Collation:** The Python worker implements RMNOCASE to natively read RootsMagic .rmtree files.
 * **Data Persistence:** All data is mapped to the ./data directory on the host.
+* **Environment Security:** Passwords and sensitive config stored in `.env` file.
 
 ## **📜 License**
 

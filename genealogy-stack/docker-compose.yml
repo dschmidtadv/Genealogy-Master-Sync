@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------
+  # 1. INTELLIGENCE LAYER: FamilySearch MCP Server
+  # -------------------------------------------------------
+  familysearch-mcp:
+    build: ./mcp-server
+    container_name: familysearch-mcp
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./data/mcp_config:/root/.familysearch-mcp
+    # Expose stdio for local connections or use a proxy for HTTP transport
+    stdin_open: true
+    tty: true
+
+  # -------------------------------------------------------
+  # 2. INGESTION HUB: RootsMagic (Wine + Edge)
+  # -------------------------------------------------------
+  rootsmagic:
+    build: ./rootsmagic
+    platform: linux/amd64
+    container_name: rootsmagic-wine
+    privileged: true
+    ports:
+      - "5900:5900" # VNC Port
+      - "8080:8080" # noVNC Web Interface
+    environment:
+      - VNC_PASSWORD=newpassword123
+      - WINEARCH=win64
+      - WINEPREFIX=/root/.wine
+    volumes:
+      - ./data/rm_data:/root/Documents/RootsMagic 
+
+  # -------------------------------------------------------
+  # 3. DISTRIBUTION NODE: Gramps Web
+  # -------------------------------------------------------
+  grampsweb:
+    image: ghcr.io/gramps-project/grampsweb:latest
+    container_name: grampsweb
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - GRAMPSWEB_TREE=My_Family_Tree
+      - GRAMPSWEB_CELERY_CONFIG__broker_url=redis://redis:6379/0
+      - GRAMPSWEB_CELERY_CONFIG__result_backend=redis://redis:6379/0
+    volumes:
+      - ./data/gramps_users:/app/users
+      - ./data/gramps_media:/app/media
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    container_name: gramps_redis
+    restart: always
+
+  # -------------------------------------------------------
+  # 4. AUTOMATION GLUE: Python Sync Worker
+  # -------------------------------------------------------
+  sync-worker:
+    image: python:3.11-slim
+    container_name: sync-worker
+    working_dir: /app
+    volumes:
+      - ./scripts:/app
+      - ./data/rm_data:/data/rm_data # Read-only access to RM DB
+    command: python sync_worker.py
+    depends_on:
+      - grampsweb
