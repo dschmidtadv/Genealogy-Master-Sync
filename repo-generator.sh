@@ -3,269 +3,213 @@
 # ==============================================================================
 # COPILOT / AI INSTRUCTIONS
 # ==============================================================================
-# CONTEXT: This script (`generate_repo.sh`) is the canonical source of truth 
-# for building the "Genealogy Master-Sync Stack" repository.
+# CONTEXT: This script (`generate_repo.sh`) builds the "Mac-Native" version of
+# the Genealogy Stack.
 #
-# ACTION: To build the repository, executing this script is the primary method.
-# It creates the folder structure, writes the Dockerfiles, and initializes git.
-#
-# CONSTRAINT: When asked to "update the stack" or "change the infrastructure", 
-# generate a new version of THIS script rather than editing individual files,
-# as this ensures reproducibility.
+# ACTION: It creates a local workspace, sets up Python/Node environments,
+# and generates configuration scripts for macOS.
 # ==============================================================================
 
-# Project Genesis: Repository Generator
-# This script creates the directory structure and files for the Genealogy Master-Sync Stack.
+# Project Genesis: Mac-Native Repository Generator
 
 # 1. Create Directory Structure
-echo "Creating directory structure..."
-mkdir -p genealogy-stack/mcp-server
-mkdir -p genealogy-stack/rootsmagic
-mkdir -p genealogy-stack/scripts
-mkdir -p genealogy-stack/data/rm_data
-mkdir -p genealogy-stack/data/gramps_db
-mkdir -p genealogy-stack/data/gramps_media
-mkdir -p genealogy-stack/data/gramps_users
-mkdir -p genealogy-stack/data/mcp_config
+echo "Creating Mac-Native directory structure..."
+BASE_DIR="genealogy-mac-stack"
+mkdir -p "$BASE_DIR/mcp-server"
+mkdir -p "$BASE_DIR/scripts"
+mkdir -p "$BASE_DIR/config"
 
-cd genealogy-stack
+cd "$BASE_DIR" || exit
 
-# 2. Generate docker-compose.yml
-echo "Generating docker-compose.yml..."
-cat << 'EOF' > docker-compose.yml
-version: '3.8'
-
-services:
-  # -------------------------------------------------------
-  # 1. INTELLIGENCE LAYER: FamilySearch MCP Server
-  # -------------------------------------------------------
-  familysearch-mcp:
-    build: ./mcp-server
-    container_name: familysearch-mcp
-    restart: unless-stopped
-    environment:
-      - NODE_ENV=production
-    volumes:
-      - ./data/mcp_config:/root/.familysearch-mcp
-    # Expose stdio for local connections or use a proxy for HTTP transport
-    stdin_open: true
-    tty: true
-
-  # -------------------------------------------------------
-  # 2. INGESTION HUB: RootsMagic (Wine + Edge)
-  # -------------------------------------------------------
-  rootsmagic:
-    build: ./rootsmagic
-    container_name: rootsmagic-wine
-    cap_add:
-      - SYS_PTRACE
-    ports:
-      - "5900:5900" # VNC Port
-      - "8080:8080" # noVNC Web Interface
-    environment:
-      - VNC_PASSWORD=genealogy
-      - WINEARCH=win64
-      - WINEPREFIX=/root/.wine
-    volumes:
-      - ./data/rm_data:/root/Documents/RootsMagic
-    # Host networking needed for reliable Ancestry OAuth callbacks
-    network_mode: "host" 
-
-  # -------------------------------------------------------
-  # 3. DISTRIBUTION NODE: Gramps Web
-  # -------------------------------------------------------
-  grampsweb:
-    image: ghcr.io/gramps-project/grampsweb:latest
-    container_name: grampsweb
-    restart: always
-    ports:
-      - "5000:5000"
-    environment:
-      - GRAMPSWEB_TREE=My_Family_Tree
-      - GRAMPSWEB_CELERY_CONFIG__broker_url=redis://redis:6379/0
-      - GRAMPSWEB_CELERY_CONFIG__result_backend=redis://redis:6379/0
-    volumes:
-      - ./data/gramps_users:/app/users
-      - ./data/gramps_media:/app/media
-    depends_on:
-      - redis
-
-  redis:
-    image: redis:alpine
-    container_name: gramps_redis
-    restart: always
-
-  # -------------------------------------------------------
-  # 4. AUTOMATION GLUE: Python Sync Worker
-  # -------------------------------------------------------
-  sync-worker:
-    image: python:3.11-slim
-    container_name: sync-worker
-    working_dir: /app
-    volumes:
-      - ./scripts:/app
-      - ./data/rm_data:/data/rm_data # Read-only access to RM DB
-    command: python sync_worker.py
-    depends_on:
-      - grampsweb
-EOF
-
-# 3. Generate MCP Dockerfile
-echo "Generating mcp-server/Dockerfile..."
-cat << 'EOF' > mcp-server/Dockerfile
-# Build stage
-FROM node:18-alpine AS builder
-WORKDIR /app
-
-# Install git to clone the repo
-RUN apk add --no-cache git
-
-# Clone the repository identified in the research
-RUN git clone https://github.com/dulbrich/familysearch-mcp.git .
-
-# Install dependencies and build
-RUN npm install
-RUN npm run build
-
-# Runtime stage
-FROM node:18-alpine
-WORKDIR /app
-
-# Copy built artifacts
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
-
-# Ensure config directory exists
-RUN mkdir -p /root/.familysearch-mcp
-
-# Entrypoint via node
-ENTRYPOINT ["node", "dist/index.js"]
-EOF
-
-# 4. Generate RootsMagic Dockerfile
-echo "Generating rootsmagic/Dockerfile..."
-cat << 'EOF' > rootsmagic/Dockerfile
-# Base image from the expert report recommendation
-FROM scottyhardy/docker-wine:latest
-
-# Set environment for 64-bit Windows 10
-ENV WINEARCH=win64
-ENV WINEPREFIX=/root/.wine
-
-# 1. Install Critical Dependencies (Report Section 4.2)
-# corefonts: Text rendering
-# gdiplus: Tree drawing
-# wininet: Ancestry API calls
-# msxml6: Parsing XML responses
-RUN winetricks -q corefonts gdiplus wininet msxml6 d3dcompiler_47
-
-# 2. The Edge/WebView2 Workaround (Report Section 4.3)
-# We download the standalone enterprise installer to avoid downloader stubs that crash
-RUN wget https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/6c905869-7756-4b82-9014-4340e461a668/MicrosoftEdgeEnterpriseX64.msi -O /root/edge.msi \
-    && wine msiexec /i /root/edge.msi /qn \
-    && rm /root/edge.msi
-
-# 3. Directory Setup
-WORKDIR /root/Documents/RootsMagic
-CMD ["/usr/bin/entrypoint"]
-EOF
-
-# 5. Generate Sync Worker Script
+# 2. Generate Python Sync Worker (Native Version)
 echo "Generating scripts/sync_worker.py..."
 cat << 'EOF' > scripts/sync_worker.py
 import sqlite3
 import time
 import os
-import requests
-import uuid
+import sys
+from pathlib import Path
 
-# Configuration
-RM_DB_PATH = "/data/rm_data/MasterTree.rmtree"
-GRAMPS_API_URL = "http://grampsweb:5000/api"
-CHECK_INTERVAL = 300  # Check every 5 minutes
+# Configuration: Tries to find RootsMagic file in standard Mac Documents location
+USER_HOME = str(Path.home())
+DEFAULT_DB_PATH = os.path.join(USER_HOME, "Documents", "RootsMagic", "MasterTree.rmtree")
 
 def rmnocase_collation(s1, s2):
-    """
-    Simulates the RMNOCASE collation used by RootsMagic.
-    Essential for querying NameTable without crashing.
-    """
+    """Simulates RootsMagic RMNOCASE collation."""
     s1 = s1.lower() if s1 else ""
     s2 = s2.lower() if s2 else ""
     if s1 == s2: return 0
     if s1 < s2: return -1
     return 1
 
-def check_db_changes():
-    """
-    Watches the file modification time of the RootsMagic DB.
-    """
-    last_mtime = 0
-    while True:
-        try:
-            if os.path.exists(RM_DB_PATH):
-                current_mtime = os.path.getmtime(RM_DB_PATH)
-                if current_mtime > last_mtime:
-                    print(f"Change detected in {RM_DB_PATH}. Starting sync...")
-                    sync_data()
-                    last_mtime = current_mtime
-            else:
-                print("Waiting for RootsMagic database creation...")
-        except Exception as e:
-            print(f"Error watching file: {e}")
-        
-        time.sleep(CHECK_INTERVAL)
-
-def sync_data():
-    """
-    Extracts data from RootsMagic and pushes to Gramps.
-    """
+def sync_data(db_path):
     try:
-        # Connect to RootsMagic SQLite
-        conn = sqlite3.connect(RM_DB_PATH)
+        print(f"Connecting to RootsMagic DB at {db_path}...")
+        conn = sqlite3.connect(db_path)
         conn.create_collation("RMNOCASE", rmnocase_collation)
         cursor = conn.cursor()
 
-        # Extract Persons with Ancestry Links
-        # Query based on research into LinkAncestryTable
         cursor.execute("""
-            SELECT p.PersonID, n.Given, n.Surname, l.extID 
-            FROM PersonTable p
-            JOIN NameTable n ON p.PersonID = n.OwnerID
-            LEFT JOIN LinkAncestryTable l ON p.PersonID = l.rmID
-            WHERE n.IsPrimary = 1
+            SELECT count(*) FROM PersonTable
         """)
+        count = cursor.fetchone()[0]
+        print(f"SUCCESS: Found {count} persons in your RootsMagic tree.")
         
-        persons = cursor.fetchall()
-        print(f"Found {len(persons)} persons in RootsMagic.")
-
-        # Sync logic would go here:
-        # 1. Iterate through persons
-        # 2. Check if they exist in Gramps (via API)
-        # 3. Create or Update
+        # Add your custom ETL / Export logic here
+        # e.g., Export to GEDCOM for MacFamilyTree
         
         conn.close()
-        print("Sync complete.")
-
     except Exception as e:
-        print(f"Sync failed: {e}")
+        print(f"ERROR: {e}")
 
 if __name__ == "__main__":
-    print("Starting Genealogy Sync Worker...")
-    check_db_changes()
+    target_db = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DB_PATH
+    if os.path.exists(target_db):
+        sync_data(target_db)
+    else:
+        print(f"Creating starter config... (DB not found at {target_db})")
+        print("Please run RootsMagic and create a tree named 'MasterTree.rmtree' in Documents/RootsMagic")
 EOF
 
-# 6. Initialize Git Repo
-echo "Initializing Git repository..."
+# 3. Generate Mac Setup Script (Install Dependencies)
+echo "Generating setup_env.sh..."
+cat << 'EOF' > setup_env.sh
+#!/bin/bash
+# Installs Node.js dependencies for the MCP server
+
+echo ">>> Setting up FamilySearch MCP Server..."
+if [ ! -d "mcp-server/dist" ]; then
+    echo "Cloning MCP Server..."
+    git clone https://github.com/dulbrich/familysearch-mcp.git ./mcp-server_temp
+    mv ./mcp-server_temp/* ./mcp-server/
+    rm -rf ./mcp-server_temp
+fi
+
+cd mcp-server
+echo "Installing NPM packages..."
+npm install
+echo "Building TypeScript..."
+npm run build
+cd ..
+
+echo ">>> Setup Complete."
+echo "You can now verify the install by running: node mcp-server/dist/index.js"
+EOF
+chmod +x setup_env.sh
+
+# 4. Generate Claude Configuration Helper
+echo "Generating config/claude_config_helper.sh..."
+cat << 'EOF' > config/claude_config_helper.sh
+#!/bin/bash
+# Output the JSON snippet needed for Claude Desktop
+PWD_PATH=$(pwd)
+NODE_PATH=$(which node)
+
+echo "========================================================"
+echo "      CLAUDE DESKTOP CONFIGURATION SNIPPET"
+echo "========================================================"
+echo "Copy the block below into your config file at:"
+echo "~/Library/Application Support/Claude/claude_desktop_config.json"
+echo ""
+echo "{"
+echo "  \"mcpServers\": {"
+echo "    \"familysearch\": {"
+echo "      \"command\": \"$NODE_PATH\","
+echo "      \"args\": [\"$PWD_PATH/../mcp-server/dist/index.js\"],"
+echo "      \"env\": { \"NODE_ENV\": \"production\" }"
+echo "    }"
+echo "  }"
+echo "}"
+echo "========================================================"
+EOF
+chmod +x config/claude_config_helper.sh
+
+# 5. Generate Roo Code / VS Code Configuration
+echo "Generating config/roocode_config.json..."
+# We create a JSON file directly that can be copied
+PWD_PATH=$(pwd)
+NODE_PATH=$(which node)
+
+# If node path is empty, default to standard mac path for the JSON suggestion
+if [ -z "$NODE_PATH" ]; then
+    NODE_PATH="/usr/local/bin/node"
+fi
+
+cat << EOF > config/roocode_config.json
+{
+  "mcpServers": {
+    "familysearch": {
+      "command": "$NODE_PATH",
+      "args": ["$PWD_PATH/mcp-server/dist/index.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}
+EOF
+
+# 6. Generate README
+echo "Generating README.md..."
+cat << 'EOF' > README.md
+# Genealogy Mac-Native Stack
+
+A simplified, host-based workflow for syncing genealogy data on macOS using native apps and local scripts.
+
+## 🍎 Architecture
+
+1.  **Ingestion:** [RootsMagic 10/11 for Mac](https://rootsmagic.com/download) (Native App).
+2.  **Intelligence:** FamilySearch MCP Server (Local Node.js process).
+3.  **Automation:** Python scripts reading direct file paths.
+
+## 🛠 Setup
+
+### 1. Requirements
+* **RootsMagic 10 or 11** (Installed in `/Applications`)
+* **Node.js** (v18+)
+* **Python 3.10+**
+* **VS Code** with **Roo Code** extension
+
+### 2. Installation
+Run the setup script to download and build the MCP server:
+\`\`\`bash
+./setup_env.sh
+\`\`\`
+
+### 3. Configure FamilySearch
+1.  Get your Client ID from FamilySearch Developers.
+2.  Create the config file:
+    \`\`\`bash
+    mkdir ~/.familysearch-mcp
+    echo '{ "clientId": "YOUR_KEY_HERE" }' > ~/.familysearch-mcp/config.json
+    \`\`\`
+
+### 4. Connect to Roo Code (VS Code)
+1.  Open the file \`config/roocode_config.json\` created in this repo.
+2.  In VS Code, open the **Roo Code** extension sidebar.
+3.  Click the **MCP** icon / "Configure MCP Servers".
+4.  Paste the content of \`roocode_config.json\` into your Roo Code settings file.
+5.  Restart the Extension or VS Code.
+
+### 5. Run Sync Diagnostics
+Test if Python can read your RootsMagic file:
+\`\`\`bash
+python3 scripts/sync_worker.py
+\`\`\`
+
+## 📝 Workflow
+1.  Use **RootsMagic** to sync with Ancestry/FamilySearch.
+2.  Use **Roo Code** to ask questions like: *"Search FamilySearch for [Name] and write a Python script to find their duplicates in my local DB."*
+3.  Run the **Python script** to perform custom analysis.
+EOF
+
+# 7. Initialize Git
+echo "Initializing Git..."
 git init
 git add .
-git commit -m "Initial commit: Generated Genealogy Master-Sync Stack"
+git commit -m "Initial commit: Mac-Native Genealogy Stack"
 
-echo "----------------------------------------------------------------"
-echo "Repository created successfully in ./genealogy-stack"
-echo "To push to GitHub, run:"
-echo "  cd genealogy-stack"
-echo "  git remote add origin https://github.com/<YOUR_USERNAME>/genealogy-stack.git"
-echo "  git branch -M main"
-echo "  git push -u origin main"
-echo "----------------------------------------------------------------"
+echo "--------------------------------------------------------"
+echo "Mac-Native Stack Created in ./genealogy-mac-stack"
+echo "Run './setup_env.sh' inside that folder to begin."
+echo "--------------------------------------------------------"
